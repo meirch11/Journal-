@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>My Private Journal</title>
+</head>
+<body>
+  <h2>My Journal</h2>
+
+  <!-- Login / Signup -->
+  <input type="email" id="email" placeholder="Email">
+  <input type="password" id="password" placeholder="Password">
+  <button id="signup">Sign Up</button>
+  <button id="login">Login</button>
+  <button id="logout" style="display:none;">Logout</button>
+
+  <hr>
+
+  <!-- Journal -->
+  <textarea id="entry" placeholder="Write your thoughts..."></textarea><br>
+  <button id="save">Save Entry</button>
+  <div id="entries"></div>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+  <script>
+    // 🔑 Paste your Firebase config here
+    // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+      const firebaseConfig = {
+  apiKey: "AIzaSyD5LatzGdt9RUFxJxwn8kPwg5P8lI4A19Y",
+  authDomain: "journal-e7d3b.firebaseapp.com",
+  projectId: "journal-e7d3b",
+  storageBucket: "journal-e7d3b.firebasestorage.app",
+  messagingSenderId: "932382559254",
+  appId: "1:932382559254:web:d4b2cea0ab28e9069f3937"
+};
+
+// Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    firebase.initializeApp(firebaseConfig);
+
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // Sign up
+    document.getElementById("signup").onclick = () => {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      auth.createUserWithEmailAndPassword(email, password).catch(alert);
+    };
+
+    // Login
+    document.getElementById("login").onclick = () => {
+      const email = document.getElementById("email").value;
+      const password = document.getElementById("password").value;
+      auth.signInWithEmailAndPassword(email, password).catch(alert);
+    };
+
+    // Logout
+    document.getElementById("logout").onclick = () => {
+      auth.signOut();
+    };
+
+    // Auth State
+    auth.onAuthStateChanged(user => {
+      if (user) {
+        document.getElementById("logout").style.display = "block";
+        loadEntries(user.uid);
+      } else {
+        document.getElementById("logout").style.display = "none";
+        document.getElementById("entries").innerHTML = "";
+      }
+    });
+
+    // Save Entry
+    document.getElementById("save").onclick = () => {
+      const entry = document.getElementById("entry").value;
+      const user = auth.currentUser;
+      if (user) {
+        db.collection("journals").doc(user.uid).collection("entries").add({
+          text: entry,
+          timestamp: new Date()
+        });
+        document.getElementById("entry").value = "";
+      } else {
+        alert("Login first!");
+      }
+    };
+
+    // Load Entries
+    function loadEntries(uid) {
+      db.collection("journals").doc(uid).collection("entries")
+        .orderBy("timestamp", "desc")
+        .onSnapshot(snapshot => {
+          const entriesDiv = document.getElementById("entries");
+          entriesDiv.innerHTML = "";
+          snapshot.forEach(doc => {
+            entriesDiv.innerHTML += "<p>" + doc.data().text + "</p>";
+          });
+        });
+    }
+  </script>
+</body>
+</html>
