@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Private Journal</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2em; }
+    #journalArea { width: 100%; height: 300px; display:none; }
+    #controls { margin-top: 1em; display:none; }
+    #gate { margin-bottom: 1em; }
+    button { margin-right: 0.5em; }
+    small { color: red; display:block; margin-top:0.5em; }
+  </style>
+</head>
+<body>
+  <h2>🔒 Private Journal</h2>
+  <div id="gate">
+    <input type="password" id="password" placeholder="Enter password">
+    <button id="unlockBtn" type="button">Unlock</button>
+    <small id="msg"></small>
+  </div>
+  <textarea id="journalArea" placeholder="Write your thoughts..."></textarea>
+  <div id="controls">
+    <button id="saveBtn" type="button">Save</button>
+    <button id="exportBtn" type="button">Export</button>
+    <label for="importFile" style="cursor:pointer;">Import</label>
+    <input type="file" id="importFile" style="display:none;">
+  </div>
+
+<script>
+async function sha256(msg) {
+  const data = new TextEncoder().encode(msg);
+  const hash = await crypto.subtle.digest("SHA-256", data);
+  return hash;
+}
+async function getKey(pass) {
+  const keyMaterial = await sha256(pass);
+  return crypto.subtle.importKey("raw", keyMaterial, {name:"AES-GCM"}, false, ["encrypt","decrypt"]);
+}
+async function encryptData(key, data) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(data);
+  const ciphertext = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, encoded);
+  return {iv:Array.from(iv), ct: btoa(String.fromCharCode(...new Uint8Array(ciphertext)))};
+}
+async function decryptData(key, stored) {
+  const iv = new Uint8Array(stored.iv);
+  const data = Uint8Array.from(atob(stored.ct), c => c.charCodeAt(0));
+  const plain = await crypto.subtle.decrypt({name:"AES-GCM", iv}, key, data);
+  return new TextDecoder().decode(plain);
+}
+
+const unlockBtn=document.getElementById("unlockBtn");
+const saveBtn=document.getElementById("saveBtn");
+const exportBtn=document.getElementById("exportBtn");
+const importFile=document.getElementById("importFile");
+const msg=document.getElementById("msg");
+const area=document.getElementById("journalArea");
+const controls=document.getElementById("controls");
+let cryptoKey, password;
+
+unlockBtn.onclick=async()=>{
+  try{
+    password=document.getElementById("password").value;
+    if(!password){ msg.textContent="Enter a password"; return; }
+    cryptoKey=await getKey(password);
+    const saved=localStorage.getItem("journal");
+    if(saved){
+      try{
+        const decrypted=await decryptData(cryptoKey, JSON.parse(saved));
+        area.value=decrypted;
+      }catch(e){ msg.textContent="Wrong password or corrupt data"; return; }
+    }
+    document.getElementById("gate").style.display="none";
+    area.style.display="block";
+    controls.style.display="block";
+  }catch(e){ msg.textContent="⚠️ Error unlocking: "+e; }
+};
+
+saveBtn.onclick=async()=>{
+  try{
+    const encrypted=await encryptData(cryptoKey, area.value);
+    localStorage.setItem("journal", JSON.stringify(encrypted));
+    msg.textContent="Saved!";
+    setTimeout(()=>msg.textContent="",2000);
+  }catch(e){ msg.textContent="⚠️ Save error: "+e; }
+};
+
+exportBtn.onclick=()=>{
+  const data=localStorage.getItem("journal");
+  if(!data){ msg.textContent="Nothing to export"; return; }
+  const blob=new Blob([data],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="journal.json";
+  a.click();
+};
+
+importFile.onchange=async(e)=>{
+  const file=e.target.files[0];
+  if(!file)return;
+  const text=await file.text();
+  try{
+    const parsed=JSON.parse(text);
+    const decrypted=await decryptData(cryptoKey,parsed);
+    area.value=decrypted;
+    localStorage.setItem("journal", text);
+    msg.textContent="Imported!";
+    setTimeout(()=>msg.textContent="",2000);
+  }catch(err){ msg.textContent="⚠️ Import failed: "+err; }
+};
+
+// Warn if opened as file://
+if(location.protocol!=="https:"){
+  msg.textContent="⚠️ Warning: Encryption requires HTTPS or localhost. Some features may not work.";
+}
+</script>
+</body>
+</html>
